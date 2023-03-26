@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <div>
+        <label for="timeRange">Zakres czasu:</label>
+        <select id="timeRange">
+            <option value="week">7 dni</option>
+            <option value="twoWeeks">14 dni</option>
+            <option value="month">Miesiąc</option>
+            <option value="year">Rok</option>
+        </select>
+        <label for="referenceCurrency">Waluta referencyjna:</label>
+        <select id="referenceCurrency">
+            <option value="EUR">EUR</option>
+            <option value="USD">USD</option>
+            <option value="PLN">PLN</option>
+        </select>
+        <span>Pokaż waluty:</span>
+        <input type="checkbox" id="EUR" name="currency" value="EUR" checked>
+        <label for="EUR" style="padding-right: 15px;">EUR</label>
+        <input type="checkbox" id="USD" name="currency" value="USD">
+        <label for="USD" style="padding-right: 15px;">USD</label>
+        <input type="checkbox" id="PLN" name="currency" value="PLN">
+        <label for="PLN" style="padding-right: 15px;">PLN</label>
+    </div>
+    <canvas id="myChart"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        const timeRangeElement = document.getElementById('timeRange')
+        let selectedTimeRange = timeRangeElement.options[timeRangeElement.selectedIndex].value
+
+        const referenceCurrencyElement = document.getElementById('referenceCurrency')
+        let selectedReferenceCurrency = referenceCurrencyElement.options[referenceCurrencyElement.selectedIndex].value
+
+        const currencyCheckboxes = document.querySelectorAll('input');
+        let symbols = Array.from(currencyCheckboxes).map(el => el.value).join(',');
+
+        timeRangeElement.addEventListener("change", () => {
+            selectedTimeRange = timeRangeElement.options[timeRangeElement.selectedIndex].value
+            updateChart(selectedTimeRange, selectedReferenceCurrency, symbols, true)
+        });
+
+        referenceCurrencyElement.addEventListener("change", () => {
+            selectedReferenceCurrency = referenceCurrencyElement.options[referenceCurrencyElement.selectedIndex].value
+            updateChart(selectedTimeRange, selectedReferenceCurrency, symbols, true)
+        });
+
+        currencyCheckboxes.forEach((currencyCheckbox) => {
+            currencyCheckbox.addEventListener("change", () => {
+                let markedCheckboxes = []
+                currencyCheckboxes.forEach((currencyCheckbox) => {
+                    if (currencyCheckbox.checked) {
+                        markedCheckboxes.push(currencyCheckbox.value)
+                    }
+                })
+
+                symbols = markedCheckboxes.join(',');
+                updateChart(selectedTimeRange, selectedReferenceCurrency, symbols, true)
+            });
+        })
+
+
+        updateChart(selectedTimeRange, selectedReferenceCurrency, symbols)
+
+        function updateChart(selectedTimeRange, selectedReferenceCurrency, symbols, isUpdate = false) {
+            const EXCHANGE_DATA_API_KEY = '1qP2NoRjbqawLRFPP4YveNEyfCiSP7l9'
+            const requestOptions = {
+                method: 'GET',
+                redirect: 'follow',
+                headers: new Headers({
+                    "apikey": EXCHANGE_DATA_API_KEY
+                })
+            };
+
+            let endDate = new Date();
+            let startDate;
+            switch (selectedTimeRange) {
+                case 'week':
+                    startDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() - 7);
+                    endDate = endDate.toISOString().slice(0, 10)
+                    startDate = startDate.toISOString().slice(0, 10)
+                    break;
+                case 'twoWeeks':
+                    startDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() - 14);
+                    endDate = endDate.toISOString().slice(0, 10)
+                    startDate = startDate.toISOString().slice(0, 10)
+                    break;
+                case 'month':
+                    startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 1, endDate.getDate());
+                    endDate = endDate.toISOString().slice(0, 10)
+                    startDate = startDate.toISOString().slice(0, 10)
+                    break;
+                case 'year':
+                    startDate = new Date(endDate.getFullYear() - 1, endDate.getMonth(), endDate.getDate());
+                    endDate = endDate.toISOString().slice(0, 10)
+                    startDate = startDate.toISOString().slice(0, 10)
+                    break;
+            }
+
+            fetch("https://api.apilayer.com/exchangerates_data/timeseries?base=" + selectedReferenceCurrency + "&symbols=" + symbols + "&start_date=" + startDate + "&end_date=" + endDate, requestOptions)
+                .then(response => response.text())
+                .then((result) => {
+                    const resultObject = JSON.parse(result);
+                    const EurData = []
+                    const UsdData = []
+                    const PlnData = []
+                    const dataSets = []
+
+                    Object.entries(resultObject.rates).forEach((dayData) => {
+                        if (selectedReferenceCurrency !== 'EUR') {
+                            EurData.push(dayData[1].EUR)
+                            if (!dataSets.some(e => e.label === 'EUR')) {
+                                dataSets.push({
+                                    label: 'EUR',
+                                    data: EurData,
+                                    borderColor: 'blue',
+                                    fill: false
+                                })
+                            }
+                        }
+                        if (selectedReferenceCurrency !== 'USD') {
+                            UsdData.push(dayData[1].USD)
+                            if (!dataSets.some(e => e.label === 'USD')) {
+                                dataSets.push({
+                                    label: 'USD',
+                                    data: UsdData,
+                                    borderColor: 'red',
+                                    fill: false
+                                })
+                            }
+                        }
+                        if (selectedReferenceCurrency !== 'PLN') {
+                            PlnData.push(dayData[1].PLN)
+                            if (!dataSets.some(e => e.label === 'PLN')) {
+                                dataSets.push({
+                                    label: 'PLN',
+                                    data: PlnData,
+                                    borderColor: 'green',
+                                    fill: false
+                                })
+                            }
+                        }
+                    })
+
+                    const canvas = document.getElementById('myChart').getContext("2d");
+
+                    if (isUpdate) window.chart.destroy();
+                    const chart = new Chart(canvas, {
+                        type: 'line',
+                        data: {
+                            labels: Object.keys(resultObject.rates),
+                            datasets: dataSets
+                        },
+                    });
+                    window.chart = chart
+                })
+                .catch(error => console.log(error));
+        }
+
+    </script>
+</body>
+</html>
